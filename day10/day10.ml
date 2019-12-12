@@ -15,11 +15,36 @@ let is_cohalflinear (x1, y1) (x2, y2) =
 (* pre: (x1, y1) and (x2, y2) are cohalflinear *)
 let is_closer (x1, y1) (x2, y2) =
   abs x1 < abs x2 || abs y1 < abs y2
+
+let visible_from (xo, yo) asteroids (x1, y1)  =
+  if xo = x1 && yo = y1 then false
+  else
+    let (x1', y1') = (x1 - xo, y1 - yo) in
+    Array.exists asteroids
+      ~f:(fun (x2, y2) ->
+        if xo = x2 && yo = y2 then false
+        else
+          let (x2', y2') = (x2 - xo, y2 - yo) in
+          is_cohalflinear (x1', y1') (x2', y2')
+          && is_closer (x2', y2') (x1', y1'))
+    |> not
+
+let angle_of_coords (x, y) =
+  let x' = Float.of_int x in
+  let y' = Float.of_int (-y) in
+  let open Float in
+  if x' >= 0. && y' > 0. then Float.atan (x' /. y')
+  else if x' > 0. && y' <= 0. then Float.pi /. 2. +. Float.atan (Float.abs y' / Float.abs x')
+  else if x' <= 0. && y' < 0. then Float.pi +. Float.atan (Float.abs x' / Float.abs y')
+  else 3. *. Float.pi /. 2. +. Float.atan (Float.abs y' / Float.abs x')
+
+let compare_angle (x1, y1) (x2, y2) =
+  Float.compare (angle_of_coords (x1, y1)) (angle_of_coords (x2, y2))
   
 let positions_of_map (map : char list list) : (int * int) array =
   let positions = ref [] in
-  List.iteri map ~f:(fun i cs ->
-      List.iteri cs ~f:(fun j c ->
+  List.iteri map ~f:(fun j cs ->
+      List.iteri cs ~f:(fun i c ->
           if Char.equal c '#' then positions := (i, j) :: !positions));
   Array.of_list !positions
 
@@ -46,6 +71,19 @@ let () =
                    && is_closer (x2', y2') (x1', y1'))
              |> not in
            if visible then counts.(i) <- counts.(i) + 1));
-  match Array.max_elt counts ~compare:Int.compare with
-  | Some(n) -> Out_channel.printf "%d\n" n
-  | None -> ()
+  let enumerated_counts =
+    Array.zip_exn
+      (Array.init (Array.length counts) ~f:(fun i -> i))
+      counts in
+  let compare_tagged (_,x) (_,y) = Int.compare x y in
+  let _, (xo, yo) =
+    match Array.max_elt enumerated_counts ~compare:compare_tagged with
+    | Some(i, _) -> (i, asteroids.(i))
+    | None -> failwith "cannot find maximum of array" in
+  let (visible, _) =
+    Array.partition_tf asteroids ~f:(visible_from (xo, yo) asteroids) in
+  assert (Array.length visible >= 200);
+  let visible_relative = Array.map visible ~f:(fun (x, y) -> (x - xo, y - yo)) in
+  let sorted = Array.sorted_copy visible_relative ~compare:compare_angle in
+  let (x200, y200) = sorted.(199) in
+  Out_channel.printf "%d %d\n" (x200 + xo) (y200 + yo);
