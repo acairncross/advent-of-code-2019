@@ -47,7 +47,7 @@ let find_required_amount reactions_list reactant dependant dependant_amount =
   let reactant_n = find_reactant_n reactants in
   (div_ru dependant_amount product_n) * reactant_n
 
-let rec solve reactions_list rev_deps_orig rev_deps required_amounts =
+let rec solve reactions_list rev_deps_orig rev_deps required_amounts fuel_amount =
   if Map.is_empty rev_deps
   then Map.find_exn required_amounts "ORE"
   else
@@ -58,7 +58,7 @@ let rec solve reactions_list rev_deps_orig rev_deps required_amounts =
          Map.remove rev_deps reactant
          |> Map.map ~f:(fun dependants -> Set.remove dependants reactant) in
        let required_amount' =
-         if String.equal reactant "FUEL" then 1
+         if String.equal reactant "FUEL" then fuel_amount
          else
            Set.sum (module Int)
              ~f:(fun dependant ->
@@ -74,8 +74,21 @@ let rec solve reactions_list rev_deps_orig rev_deps required_amounts =
            required_amounts
            ~key:reactant
            ~data:required_amount' in
-       Out_channel.printf "required_amount': %d\n" required_amount';
-       solve reactions_list rev_deps_orig rev_deps' required_amounts'
+       solve reactions_list rev_deps_orig rev_deps' required_amounts' fuel_amount
+
+(* Find the largest number (n) between lo and hi such that pred n holds.
+ * e.g. The largest amount of fuel such that it can be made with some amount of ore.
+ * Invariant: lo <= n <= hi *)
+let binary_search (pred : int -> bool) (lo : int) (hi : int) =
+  let rec go lo hi =
+    if lo = hi
+    then lo
+    else
+      let m = (lo + hi) / 2 in
+      if pred m
+      then go lo m
+      else go m (hi-1)
+  in go lo hi
 
 let () =
   let reactions_list =
@@ -86,13 +99,12 @@ let () =
       reactions_list
       ~f:(fun (reactants, product) -> List.map reactants ~f:snd, snd product) in
   let rev_deps = reverse_dependencies unquantified_reactions in
-  let solution = solve reactions_list rev_deps rev_deps (Map.empty (module String)) in
-  Out_channel.printf "Solution: %d\n" solution;
-  (*
-  Map.iteri
-    rev_deps
-    ~f:(fun ~key:key ~data:value ->
-      Out_channel.printf "%s: " key;
-      Set.iter value ~f:(fun v -> Out_channel.printf "%s " v);
-      Out_channel.printf "\n")
-   *)
+  let solution = solve reactions_list rev_deps rev_deps (Map.empty (module String)) 1 in
+  Out_channel.printf "Solution 1: %d\n" solution;
+  let ore = 1000000000000 in
+  let predicate fuel =
+    solve reactions_list rev_deps rev_deps (Map.empty (module String)) fuel > ore in
+  let fuel_upper_bound = ore in
+  let solution2 =
+    binary_search predicate 0 fuel_upper_bound in
+  Out_channel.printf "Solution 2: %d\n" solution2
